@@ -38,6 +38,7 @@ var lib = require('./index');
   
 // the configuration file
 var config = require('./config');
+config.proxyPath = '/proxy';
 
 // third-party dependencies
 var connect = require('connect'); // todo: call by version once 2.x is listed in npm
@@ -54,21 +55,24 @@ if(config.redistogo_url) {
 
 */	
 
-var proxy = new lib.Proxy({
-	proxyPath: '/proxy',
-	host: config.host,
-	filterHtml: add_ga,
-	onRequestError: function onRequestError(err, request, response) {
-		redirectTo(request, response, "?error=" + err.toString());
-	}
-});
-
 var server = connect()
 	.use(connect.cookieParser(config.secret))
   	.use(connect.session({
   		//store: new RedisStore({client: redis}),
   		cookie: { path: '/', httpOnly: false, maxAge: null }
   	}))
+  	.use(
+  		lib.Proxy({
+			proxyPath: config.proxyPath,
+			host: config.host,
+			domainBlocklistPath: __dirname + '/domain-blocklist.txt',
+			keywordBlocklistPath: __dirname + '/keyword-blocklist.txt',
+			
+			filterHtml: add_ga,
+			onRequestError: function onRequestError(err, request, response) {
+				redirectTo(request, response, "?error=" + err.toString());
+			}
+		}))
 	.use(function(request, response){
 	var url_data = url.parse(request.url);
 	
@@ -95,11 +99,6 @@ var server = connect()
 		redirectTo(request, response, site || "");
 	}
 	
-	// only requests that start with this get proxied - the rest get 
-	// redirected to either a url that matches this or the home page
-	if(url_data.pathname.indexOf("/proxy/http") == 0){
-		return proxy.handler(request, response);
-	}
 	
 	// the status page
 	if(url_data.pathname == "/proxy/status"){
@@ -139,7 +138,7 @@ var server = connect()
 */
 function handleUnknown(request, response){
 
-	if(request.url.indexOf('/proxy/') == 0){
+	/*if(request.url.indexOf('/proxy/') == 0){
 		// no trailing slashes
 		if(request.url == "/proxy/"){
 			return redirectTo(request, response, "");
@@ -149,7 +148,7 @@ function handleUnknown(request, response){
 		return redirectTo(request, response, 
 			"/http://" + request.url.substr(7) // "/proxy/".length = 7
 		);
-	}
+	}*/
 	
 	// if there is no referer, then either they just got here or we can't help them
 	if(!request.headers.referer){
@@ -163,20 +162,19 @@ function handleUnknown(request, response){
 		return redirectTo(request, response, ""); // "" because we don't want a trailing slash
 	}
 	
-	// now we know where they came from, so we can do something for them
-	if(ref.pathname.indexOf('/proxy/http') == 0){
-		var real_url = url.parse(getRealUrl(ref.pathname));
-		
-		// now, take the requested pat on the previous known host and send the user on their way
-		return redirectTo(request, response, real_url.protocol +"//"+ real_url.host + request.url);
-	}
-	
 	// else they were refered by something on this site that wasn't the home page and didn't come 
 	// through the proxy - aka this shouldn't happen
 	redirectTo(request, response, "");
 }
 
+function thisHost(request){
+	return (config.host) ? config.host : request.headers.host;
+}
 
+// returns the http://site.com/proxy
+function thisSite(request){
+	return 'http://' + thisHost(request) + config.proxyPath;
+}
 
 function redirectTo(request, response, site){
 	site = site || "";
@@ -189,7 +187,7 @@ function redirectTo(request, response, site){
 	if(site == "/") site = ""; // no endless redirect loops
 	try {
 		response.writeHead('302', {'Location': thisSite(request) + site});
-		console.log("recirecting to " + thisSite(request) + site);
+		console.log("redirecting to " + thisSite(request) + site);
 	} catch(ex) {
 		// the headers were already sent - we can't redirect them
 		console.error("Failed to send redirect", ex);
@@ -334,7 +332,7 @@ function sendStatus(status){
 /**
  * Set up clustering
  */
-if (cluster.isMaster) {
+if (false && cluster.isMaster) {
 
 	// the master will track a few statics and keep the workers up and running
 	
