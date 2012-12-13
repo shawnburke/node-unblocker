@@ -32,9 +32,9 @@ var http = require('http'),
 	Iconv = require('iconv').Iconv,
 	numCPUs = require('os').cpus().length;
 
+var lib = require('./index');
 
-// local dependencies
-var blocklist = require('./lib/blocklist');
+
   
 // the configuration file
 var config = require('./config');
@@ -54,40 +54,13 @@ if(config.redistogo_url) {
 
 */	
 
-
-var Proxy = require('./lib/proxy');
-
-
-
-
-/**
-* Takes a /proxy/http://site.com url from a request or a referer and returns the http://site.com/ part
-*/
-function getRealUrl(path){
-		var uri = url.parse(path),
-		real_url = uri.pathname.substr(7); // "/proxy/" is 7 characters long.
-		// we also need to include any querystring data in the real_url
-		return uri.search ? real_url + uri.search : real_url;
-}
-
-// returns the configured host if one exists, otherwise the host that the current request came in on
-function thisHost(request){
-	return (config.host) ? config.host : request.headers.host;
-}
-
-// returns the http://site.com/proxy
-function thisSite(request){
-	return 'http://' + thisHost(request) + '/proxy';
-}
-
-function onRequestError(err, request, response) {
-	redirectTo(request, response, "?error=" + err.toString());
-}
-
-var proxy = new Proxy({
+var proxy = new lib.Proxy({
 	proxyPath: '/proxy',
 	host: config.host,
-	filterHtml: add_ga
+	filterHtml: add_ga,
+	onRequestError: function onRequestError(err, request, response) {
+		redirectTo(request, response, "?error=" + err.toString());
+	}
 });
 
 var server = connect()
